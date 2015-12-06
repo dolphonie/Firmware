@@ -34,6 +34,7 @@ px4_add_module(
 	MODULE drivers__hott
 	COMPILE_FLAGS
 		-Os
+		-Wframe-larger-than=1200
 	SRCS
 		messages.cpp
 		comms.cpp
