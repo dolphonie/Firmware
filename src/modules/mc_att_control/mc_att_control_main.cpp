@@ -842,7 +842,7 @@ MulticopterAttitudeControl::task_main()
 				//Print gains whenever throttle crosses threshold -Patrick
 				if(!throtThreshold){
 					throtThreshold = true;
-					warnx("Throttle crossed threshold");
+					warnx("Throttle crossed threshold from low range to high range");
 				}
 			}else{
 				//If throttle below 60% don't change values -Patrick
@@ -853,7 +853,7 @@ MulticopterAttitudeControl::task_main()
 				//Print gains whenever throttle crosses threshold -Patrick
 				if(throtThreshold){
 					throtThreshold = false;
-					warnx("Throttle crossed threshold");
+					warnx("Throttle crossed threshold from high range to low range");
 				}
 			}
 
