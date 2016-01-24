@@ -220,6 +220,14 @@ private:
 		int vtol_type;						/**< 0 = Tailsitter, 1 = Tiltrotor, 2 = Standard airframe */
 	}		_params;
 
+	//Rescaled PID constants based on throttle position -Patrick
+	struct {
+		math::Vector<3> att_p;					/**< P gain for angular error */
+		math::Vector<3> rate_p;				/**< P gain for angular rate error */
+		//math::Vector<3> rate_i;				/**< I gain for angular rate error */
+		math::Vector<3> rate_d;				/**< D gain for angular rate error */
+	}		_params_adjust;
+
 	TailsitterRecovery *_ts_opt_recovery;	/**< Computes optimal rates for tailsitter recovery */
 
 	/**
@@ -691,7 +699,7 @@ MulticopterAttitudeControl::control_attitude(float dt)
 	}
 
 	/* calculate angular rates setpoint */
-	_rates_sp = _params.att_p.emult(e_R);
+	_rates_sp = _params_adjust.att_p.emult(e_R);
 
 	/* limit rates */
 	for (int i = 0; i < 3; i++) {
@@ -723,7 +731,7 @@ MulticopterAttitudeControl::control_attitude_rates(float dt)
 
 	/* angular rates error */
 	math::Vector<3> rates_err = _rates_sp - rates;
-	_att_control = _params.rate_p.emult(rates_err) + _params.rate_d.emult(_rates_prev - rates) / dt + _rates_int +
+	_att_control = _params_adjust.rate_p.emult(rates_err) + _params_adjust.rate_d.emult(_rates_prev - rates) / dt + _rates_int +
 		       _params.rate_ff.emult(_rates_sp - _rates_sp_prev) / dt;
 	_rates_sp_prev = _rates_sp;
 	_rates_prev = rates;
@@ -775,6 +783,7 @@ MulticopterAttitudeControl::task_main()
 	fds[0].fd = _ctrl_state_sub;
 	fds[0].events = POLLIN;
 
+	bool throtThreshold = false; //Keep track of when throttle goes over threshold for print -Patrick
 	while (!_task_should_exit) {
 
 		/* wait for up to 100ms for data */
@@ -820,6 +829,36 @@ MulticopterAttitudeControl::task_main()
 			vehicle_status_poll();
 			vehicle_motor_limits_poll();
 
+			//Scale roll_tc and pitch_tc based on throttle -Patrick
+			if(_thrust_sp> 0.6f){
+				//If throttle above 60% scale values -Patrick
+				float scaleFactor = (1.0/6.0)/2.25; //old slope:new slope ratio
+				float scaleArray[] = {scaleFactor, scaleFactor, 1.0};
+				math::Vector<3> scale = math::Vector<3>(scaleArray);
+				_params_adjust.att_p = _params.att_p.emult(scale);
+				_params_adjust.rate_p = _params.rate_p.emult(scale);
+				_params_adjust.rate_d = _params.rate_d.emult(scale);
+
+				//Print gains whenever throttle crosses threshold -Patrick
+				if(!throtThreshold){
+					throtThreshold = true;
+					warnx("Throttle crossed threshold");
+				}
+			}else{
+				//If throttle below 60% don't change values -Patrick
+				_params_adjust.att_p = _params.att_p;
+				_params_adjust.rate_p = _params.rate_p;
+				_params_adjust.rate_d = _params.rate_d;
+
+				//Print gains whenever throttle crosses threshold -Patrick
+				if(throtThreshold){
+					throtThreshold = false;
+					warnx("Throttle crossed threshold");
+				}
+			}
+
+
+
 			/* Check if we are in rattitude mode and the pilot is above the threshold on pitch
 			 * or roll (yaw can rotate 360 in normal att control).  If both are true don't
 			 * even bother running the attitude controllers */
@@ -842,7 +881,7 @@ MulticopterAttitudeControl::task_main()
 					_thrust_sp = _v_att_sp.thrust;
 					math::Quaternion q(_ctrl_state.q[0], _ctrl_state.q[1], _ctrl_state.q[2], _ctrl_state.q[3]);
 					math::Quaternion q_sp(&_v_att_sp.q_d[0]);
-					_ts_opt_recovery->setAttGains(_params.att_p, _params.yaw_ff);
+					_ts_opt_recovery->setAttGains(_params_adjust.att_p, _params.yaw_ff);
 					_ts_opt_recovery->calcOptimalRates(q, q_sp, _v_att_sp.yaw_sp_move_rate, _rates_sp);
 
 					/* limit rates */
