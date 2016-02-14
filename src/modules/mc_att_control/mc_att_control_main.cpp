@@ -102,6 +102,7 @@ extern "C" __EXPORT int mc_att_control_main(int argc, char *argv[]);
 #define RATES_I_LIMIT	0.3f
 #define MANUAL_THROTTLE_MAX_MULTICOPTER	0.9f
 #define ATTITUDE_TC_DEFAULT 0.2f
+#define PRINT_DEBUG true
 
 class MulticopterAttitudeControl
 {
@@ -294,6 +295,8 @@ private:
 	 * Main attitude control task.
 	 */
 	void		task_main();
+
+	void warnx_debug(const char* fmt, ...);
 };
 
 namespace mc_att_control
@@ -615,6 +618,14 @@ MulticopterAttitudeControl::vehicle_motor_limits_poll()
 	}
 }
 
+void
+MulticopterAttitudeControl::warnx_debug(const char* fmt, ...) {
+	va_list args;
+	va_start(args, fmt);
+	if (PRINT_DEBUG) vwarnx(fmt, args);
+	va_end(args);
+}
+
 /**
  * Attitude controller.
  * Input: 'vehicle_attitude_setpoint' topics (depending on mode)
@@ -842,7 +853,7 @@ MulticopterAttitudeControl::task_main()
 				//Print gains whenever throttle crosses threshold -Patrick
 				if(!throtThreshold){
 					throtThreshold = true;
-					warnx("Throttle crossed threshold from low range to high range");
+					warnx_debug("Throttle crossed threshold from low range to high range");
 				}
 			}else{
 				//If throttle below 60% don't change values -Patrick
@@ -853,7 +864,7 @@ MulticopterAttitudeControl::task_main()
 				//Print gains whenever throttle crosses threshold -Patrick
 				if(throtThreshold){
 					throtThreshold = false;
-					warnx("Throttle crossed threshold from high range to low range");
+					warnx_debug("Throttle crossed threshold from high range to low range");
 				}
 			}
 
