@@ -102,6 +102,7 @@ extern "C" __EXPORT int mc_att_control_main(int argc, char *argv[]);
 #define RATES_I_LIMIT	0.3f
 #define MANUAL_THROTTLE_MAX_MULTICOPTER	0.9f
 #define ATTITUDE_TC_DEFAULT 0.2f
+#define DEBUG true
 
 class MulticopterAttitudeControl
 {
@@ -125,6 +126,9 @@ public:
 
 private:
 
+	bool throtThreshold = false; //Keep track of when throttle goes over threshold for print -Patrick
+	bool bankThreshold = false;
+
 	bool	_task_should_exit;		/**< if true, task_main() should exit */
 	int		_control_task;			/**< task handle */
 
@@ -137,6 +141,7 @@ private:
 	int		_armed_sub;				/**< arming status subscription */
 	int		_vehicle_status_sub;	/**< vehicle status subscription */
 	int 	_motor_limits_sub;		/**< motor limits subscription */
+	int		_rc_channels_sub;		/**< RC channels subscription -Patrick*/
 
 	orb_advert_t	_v_rates_sp_pub;		/**< rate setpoint publication */
 	orb_advert_t	_actuators_0_pub;		/**< attitude actuator controls publication */
@@ -157,6 +162,7 @@ private:
 	struct vehicle_status_s				_vehicle_status;	/**< vehicle status */
 	struct multirotor_motor_limits_s	_motor_limits;		/**< motor limits */
 	struct mc_att_ctrl_status_s 		_controller_status; /**< controller status */
+	struct rc_channels_s				_rc_channels;		/**< RC Channels */
 
 	perf_counter_t	_loop_perf;			/**< loop performance counter */
 	perf_counter_t	_controller_latency_perf;
@@ -200,6 +206,17 @@ private:
 		param_t roll_tc;
 		param_t pitch_tc;
 
+		param_t roll_p_alt;
+		param_t roll_rate_p_alt;
+		param_t roll_rate_i_alt;
+		param_t roll_rate_d_alt;
+		param_t pitch_p_alt;
+		param_t pitch_rate_p_alt;
+		param_t pitch_rate_i_alt;
+		param_t pitch_rate_d_alt;
+		param_t bank_switch_channel;
+		param_t bank_switch_channel_threshold;
+
 	}		_params_handles;		/**< handles for interesting parameters */
 
 	struct {
@@ -218,13 +235,21 @@ private:
 		math::Vector<3> acro_rate_max;		/**< max attitude rates in acro mode */
 		float rattitude_thres;
 		int vtol_type;						/**< 0 = Tailsitter, 1 = Tiltrotor, 2 = Standard airframe */
+
+		//Alternate bank params
+		math::Vector<2> att_p_alt;					/**< P gain for angular error */
+		math::Vector<2> rate_p_alt;				/**< P gain for angular rate error */
+		math::Vector<2> rate_i_alt;				/**< I gain for angular rate error */
+		math::Vector<2> rate_d_alt;				/**< D gain for angular rate error */
+		int bank_switch_channel;
+		float bank_switch_channel_threshold;
 	}		_params;
 
 	//Rescaled PID constants based on throttle position -Patrick
 	struct {
 		math::Vector<3> att_p;					/**< P gain for angular error */
 		math::Vector<3> rate_p;				/**< P gain for angular rate error */
-		//math::Vector<3> rate_i;				/**< I gain for angular rate error */
+		math::Vector<3> rate_i;				/**< I gain for angular rate error */
 		math::Vector<3> rate_d;				/**< D gain for angular rate error */
 	}		_params_adjust;
 
@@ -286,6 +311,11 @@ private:
 	void		vehicle_motor_limits_poll();
 
 	/**
+	 * Check for RC channels status. -Patrick
+	 */
+	void		vehicle_rc_channels_poll();
+
+	/**
 	 * Shim for calling task_main from task_create.
 	 */
 	static void	task_main_trampoline(int argc, char *argv[]);
@@ -294,6 +324,17 @@ private:
 	 * Main attitude control task.
 	 */
 	void		task_main();
+
+	//Adjust parameters and bank -Patrick
+	void 		adjust_parameters();
+
+	void copy_bank_params(float &dst, float src);
+
+	void retrieve_correct_bank(math::Vector<3> &dst, math::Vector<2> src);
+
+	void warn_parameters();
+
+	void warnx_debug(const char* fmt, ...);
 };
 
 namespace mc_att_control
@@ -392,6 +433,17 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_params_handles.roll_tc			= 	param_find("MC_ROLL_TC");
 	_params_handles.pitch_tc		= 	param_find("MC_PITCH_TC");
 
+	_params_handles.roll_p_alt			= 	param_find("MC_ROLL_PA");
+	_params_handles.roll_rate_p_alt		= 	param_find("MC_ROLLRATE_PA");
+	_params_handles.roll_rate_i_alt		= 	param_find("MC_ROLLRATE_IA");
+	_params_handles.roll_rate_d_alt		= 	param_find("MC_ROLLRATE_DA");
+	_params_handles.pitch_p_alt			= 	param_find("MC_PITCH_PA");
+	_params_handles.pitch_rate_p_alt	= 	param_find("MC_PITCHRATE_PA");
+	_params_handles.pitch_rate_i_alt	= 	param_find("MC_PITCHRATE_IA");
+	_params_handles.pitch_rate_d_alt	= 	param_find("MC_PITCHRATE_DA");
+	_params_handles.bank_switch_channel	= 	param_find("MC_PARAM_SW");
+	_params_handles.bank_switch_channel_threshold	= 	param_find("MC_PARAM_TH");
+
 	/* fetch initial parameter values */
 	parameters_update();
 
@@ -461,6 +513,26 @@ MulticopterAttitudeControl::parameters_update()
 	_params.rate_d(1) = v * (ATTITUDE_TC_DEFAULT / pitch_tc);
 	param_get(_params_handles.pitch_rate_ff, &v);
 	_params.rate_ff(1) = v;
+
+	/*Alternate roll gains */
+	param_get(_params_handles.roll_p_alt, &v);
+	_params.att_p_alt(0) = v * (ATTITUDE_TC_DEFAULT / roll_tc);
+	param_get(_params_handles.roll_rate_p_alt, &v);
+	_params.rate_p_alt(0) = v * (ATTITUDE_TC_DEFAULT / roll_tc);
+	param_get(_params_handles.roll_rate_i_alt, &v);
+	_params.rate_i_alt(0) = v;
+	param_get(_params_handles.roll_rate_d_alt, &v);
+	_params.rate_d_alt(0) = v * (ATTITUDE_TC_DEFAULT / roll_tc);
+
+	/*Alternate pitch gains */
+	param_get(_params_handles.pitch_p_alt, &v);
+	_params.att_p_alt(1) = v * (ATTITUDE_TC_DEFAULT / pitch_tc);
+	param_get(_params_handles.pitch_rate_p_alt, &v);
+	_params.rate_p_alt(1) = v * (ATTITUDE_TC_DEFAULT / pitch_tc);
+	param_get(_params_handles.pitch_rate_i_alt, &v);
+	_params.rate_i_alt(1) = v;
+	param_get(_params_handles.pitch_rate_d_alt, &v);
+	_params.rate_d_alt(1) = v * (ATTITUDE_TC_DEFAULT / pitch_tc);
 
 	/* yaw gains */
 	param_get(_params_handles.yaw_p, &v);
@@ -615,6 +687,16 @@ MulticopterAttitudeControl::vehicle_motor_limits_poll()
 	}
 }
 
+void
+MulticopterAttitudeControl::vehicle_rc_channels_poll(){
+	bool updated;
+	orb_check(_rc_channels_sub, &updated);
+
+	if (updated) {
+		orb_copy(ORB_ID(rc_channels), _rc_channels_sub, &_rc_channels);
+	}
+}
+
 /**
  * Attitude controller.
  * Input: 'vehicle_attitude_setpoint' topics (depending on mode)
@@ -740,7 +822,7 @@ MulticopterAttitudeControl::control_attitude_rates(float dt)
 	if (_thrust_sp > MIN_TAKEOFF_THRUST && !_motor_limits.lower_limit && !_motor_limits.upper_limit) {
 		for (int i = 0; i < 3; i++) {
 			if (fabsf(_att_control(i)) < _thrust_sp) {
-				float rate_i = _rates_int(i) + _params.rate_i(i) * rates_err(i) * dt;
+				float rate_i = _rates_int(i) + _params_adjust.rate_i(i) * rates_err(i) * dt;//Changed to adjusted -Patrick
 
 				if (PX4_ISFINITE(rate_i) && rate_i > -RATES_I_LIMIT && rate_i < RATES_I_LIMIT &&
 				    _att_control(i) > -RATES_I_LIMIT && _att_control(i) < RATES_I_LIMIT) {
@@ -773,6 +855,7 @@ MulticopterAttitudeControl::task_main()
 	_armed_sub = orb_subscribe(ORB_ID(actuator_armed));
 	_vehicle_status_sub = orb_subscribe(ORB_ID(vehicle_status));
 	_motor_limits_sub = orb_subscribe(ORB_ID(multirotor_motor_limits));
+	_rc_channels_sub = orb_subscribe(ORB_ID(rc_channels));
 
 	/* initialize parameters cache */
 	parameters_update();
@@ -783,7 +866,6 @@ MulticopterAttitudeControl::task_main()
 	fds[0].fd = _ctrl_state_sub;
 	fds[0].events = POLLIN;
 
-	bool throtThreshold = false; //Keep track of when throttle goes over threshold for print -Patrick
 	while (!_task_should_exit) {
 
 		/* wait for up to 100ms for data */
@@ -828,36 +910,9 @@ MulticopterAttitudeControl::task_main()
 			vehicle_manual_poll();
 			vehicle_status_poll();
 			vehicle_motor_limits_poll();
+			vehicle_rc_channels_poll();
 
-			//Scale roll_tc and pitch_tc based on throttle -Patrick
-			if(_thrust_sp> 0.6f){
-				//If throttle above 60% scale values -Patrick
-				float scaleFactor = (1.0/6.0)/2.25; //old slope:new slope ratio
-				float scaleArray[] = {scaleFactor, scaleFactor, 1.0};
-				math::Vector<3> scale = math::Vector<3>(scaleArray);
-				_params_adjust.att_p = _params.att_p.emult(scale);
-				_params_adjust.rate_p = _params.rate_p.emult(scale);
-				_params_adjust.rate_d = _params.rate_d.emult(scale);
-
-				//Print gains whenever throttle crosses threshold -Patrick
-				if(!throtThreshold){
-					throtThreshold = true;
-					warnx("Throttle crossed threshold from low range to high range");
-				}
-			}else{
-				//If throttle below 60% don't change values -Patrick
-				_params_adjust.att_p = _params.att_p;
-				_params_adjust.rate_p = _params.rate_p;
-				_params_adjust.rate_d = _params.rate_d;
-
-				//Print gains whenever throttle crosses threshold -Patrick
-				if(throtThreshold){
-					throtThreshold = false;
-					warnx("Throttle crossed threshold from high range to low range");
-				}
-			}
-
-
+			adjust_parameters();
 
 			/* Check if we are in rattitude mode and the pilot is above the threshold on pitch
 			 * or roll (yaw can rotate 360 in normal att control).  If both are true don't
@@ -980,6 +1035,102 @@ MulticopterAttitudeControl::task_main()
 
 	_control_task = -1;
 	return;
+}
+
+void
+MulticopterAttitudeControl::copy_bank_params(float &dst, float src) {
+	if (src >= 0) dst = src;
+}
+
+void
+MulticopterAttitudeControl::retrieve_correct_bank(math::Vector<3> &dst, math::Vector<2> src)
+{
+	int channel = _params.bank_switch_channel;
+	if (channel!=0 &&
+			_rc_channels.channels[channel-1] > _params.bank_switch_channel_threshold) {
+		for(unsigned i = 0; i < 2; i++){
+			copy_bank_params(dst(i),src(i));
+		}
+	}
+}
+
+void
+MulticopterAttitudeControl::warnx_debug(const char* fmt, ...) {
+	va_list args;
+	va_start(args, fmt);
+	if (DEBUG) vwarnx(fmt, args);
+	va_end(args);
+}
+
+void
+MulticopterAttitudeControl::adjust_parameters()
+{
+	_params_adjust.att_p = _params.att_p;
+	_params_adjust.rate_p = _params.rate_p;
+	_params_adjust.rate_i = _params.rate_i;
+	_params_adjust.rate_d = _params.rate_d;
+
+
+	retrieve_correct_bank(_params_adjust.att_p, _params.att_p_alt);
+	retrieve_correct_bank(_params_adjust.rate_p, _params.rate_p_alt);
+	retrieve_correct_bank(_params_adjust.rate_i, _params.rate_i_alt);
+	retrieve_correct_bank(_params_adjust.rate_d, _params.rate_d_alt);
+
+
+
+	//Scale roll_tc and pitch_tc based on throttle -Patrick
+	if(_thrust_sp> 0.6f){//Disabled for testing purposes -Patrick
+		//If throttle above 60% scale values -Patrick
+		float scaleFactor = (0.4f)/1.9f; //old slope:new slope ratio
+		float scaleArray[] = {scaleFactor, scaleFactor, 1.0};
+		math::Vector<3> scale = math::Vector<3>(scaleArray);
+		_params_adjust.att_p = _params_adjust.att_p.emult(scale);
+		_params_adjust.rate_p = _params_adjust.rate_p.emult(scale);
+		_params_adjust.rate_d = _params_adjust.rate_d.emult(scale);
+
+		//Print gains whenever throttle crosses threshold -Patrick
+		if(!throtThreshold){
+			throtThreshold = true;
+			warnx_debug("Throttle crossed threshold from low range to high range");
+		}
+	}else{
+		//If throttle below 60% don't change values -Patrick
+		//Print gains whenever throttle crosses threshold -Patrick
+		if(throtThreshold){
+			throtThreshold = false;
+			warnx_debug("Throttle crossed threshold from high range to low range");
+		}
+	}
+
+	int channel = _params.bank_switch_channel;
+	if (channel!=0 &&
+		_rc_channels.channels[channel-1] > _params.bank_switch_channel_threshold) {
+		if(!bankThreshold){
+			bankThreshold = true;
+			warnx_debug("alternate parameter bank");
+			warn_parameters();
+		}
+	}else{
+		if(bankThreshold){
+			bankThreshold = false;
+			warnx_debug("standard parameter bank");
+			warn_parameters();
+		}
+	}
+}
+
+void
+MulticopterAttitudeControl::warn_parameters(){
+	warnx_debug("Parameters:");
+	warnx_debug("Pitch Attitude P: %f",(double)_params_adjust.att_p(0));
+	warnx_debug("Pitch Rate P: %f",(double)_params_adjust.rate_p(0));
+	warnx_debug("Pitch Rate I: %f",(double)_params_adjust.rate_i(0));
+	warnx_debug("Pitch Rate D: %f",(double)_params_adjust.rate_d(0));
+
+	warnx_debug("Roll Attitude P: %f",(double)_params_adjust.att_p(1));
+	warnx_debug("Roll Rate P: %f",(double)_params_adjust.rate_p(1));
+	warnx_debug("Roll Rate I: %f",(double)_params_adjust.rate_i(1));
+	warnx_debug("Roll Rate D: %f",(double)_params_adjust.rate_d(1));
 }
 
 int

@@ -230,8 +230,8 @@ MultirotorMixer::mix(float *outputs, unsigned space, uint16_t *status_reg)
 	}
 
 	// thrust boost parameters
-	float thrust_increase_factor = 1.5f;
-	float thrust_decrease_factor = 0.6f;
+	//float thrust_increase_factor = 1.5f;  Temporarily unused -Patrick
+	//float thrust_decrease_factor = 0.6f;  Temporarily unused -Patrick
 
 	/* perform initial mix pass yielding unbounded outputs, ignore yaw */
 	for (unsigned i = 0; i < _rotor_count; i++) {
@@ -256,6 +256,21 @@ MultirotorMixer::mix(float *outputs, unsigned space, uint16_t *status_reg)
 	float boost = 0.0f;				// value added to demanded thrust (can also be negative)
 	float roll_pitch_scale = 1.0f;	// scale for demanded roll and pitch
 
+	//Scales roll and pitch so that average thrust is maintained -Patrick
+	float minScaleFactor = thrust/(thrust-min_out);
+	float maxScaleFactor = (1 - thrust)/(max_out - thrust);
+
+	if(min_out < 0.0f && max_out <= 1.0f){
+		//Only minimum output is out-of-bounds -Patrick
+		roll_pitch_scale = minScaleFactor;
+	}else if(min_out >= 0.0f && max_out > 1.0f){
+		//Only maximum output is out-of-bounds -Patrick
+		roll_pitch_scale = maxScaleFactor;
+	}else if(min_out < 0.0f && max_out > 1.0f){
+		//Both min and max outputs are out-of-bounds -Patrick
+		roll_pitch_scale = fminf(minScaleFactor,maxScaleFactor);
+	}
+	/* Disable because it's buggy -Patrick
 	if (min_out < 0.0f && max_out < 1.0f && -min_out <= 1.0f - max_out) {
 		float max_thrust_diff = thrust * thrust_increase_factor - thrust;
 
@@ -293,6 +308,7 @@ MultirotorMixer::mix(float *outputs, unsigned space, uint16_t *status_reg)
 				  thrust_increase_factor * thrust - thrust);
 		roll_pitch_scale = (thrust + boost) / (thrust - min_out);
 	}
+	Disable because it's buggy -Patrick */
 
 	// notify if saturation has occurred
 	if (min_out < 0.0f) {

@@ -303,3 +303,106 @@ PARAM_DEFINE_FLOAT(MC_ACRO_Y_MAX, 360.0f);
  * @group Multicopter Attitude Control
  */
 PARAM_DEFINE_FLOAT(MC_RATT_TH, 1.0f);
+
+/**
+ * Alternate roll P gain
+ *
+ * Roll proportional gain, i.e. desired angular speed in rad/s for error 1 rad.
+ *
+ * @min -1
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_ROLL_PA, -1f);
+
+/**
+ * Alternate Roll rate P gain
+ *
+ * Roll rate proportional gain, i.e. control output for angular speed error 1 rad/s.
+ *
+ * @min -1
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_ROLLRATE_PA, -1f);
+
+/**
+ * Alternate roll rate I gain
+ *
+ * Roll rate integral gain. Can be set to compensate static thrust difference or gravity center offset.
+ *
+ * @min -1
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_ROLLRATE_IA, -1f);
+
+/**
+ * Alternate roll rate D gain
+ *
+ * Roll rate differential gain. Small values help reduce fast oscillations. If value is too big oscillations will appear again.
+ *
+ * @min -1
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_ROLLRATE_DA, -1f);
+
+/**
+ * Alternate pitch P gain
+ *
+ * Pitch proportional gain, i.e. desired angular speed in rad/s for error 1 rad.
+ *
+ * @unit 1/s
+ * @min -1
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_PITCH_PA, -1f);
+
+/**
+ * Alternate Pitch rate P gain
+ *
+ * Pitch rate proportional gain, i.e. control output for angular speed error 1 rad/s.
+ *
+ * @min -1
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_PITCHRATE_PA, -1f);
+
+/**
+ * Alternate Pitch rate I gain
+ *
+ * Pitch rate integral gain. Can be set to compensate static thrust difference or gravity center offset.
+ *
+ * @min -1
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_PITCHRATE_IA, -1f);
+
+/**
+ * Alternate Pitch rate D gain
+ *
+ * Pitch rate differential gain. Small values help reduce fast oscillations. If value is too big oscillations will appear again.
+ *
+ * @min -1
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_PITCHRATE_DA, -1f);
+
+/**
+ * Channel to switch bank
+ *
+ * Switch bank on this channel
+ *
+ * @min 0
+ * @max 18
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_INT32(MC_PARAM_SW,0);
+
+/**
+ * Threshold to switch bank
+ *
+ * Switch once above this threshold
+ *
+ * @min 0
+ * @max 1
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_PARAM_TH,.5f);
