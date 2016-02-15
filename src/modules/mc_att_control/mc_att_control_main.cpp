@@ -125,7 +125,7 @@ public:
 	int		start();
 
 private:
-	const float PID_SCALE = .6;//Amount of PID left at full throttle -Patrick
+	bool throtThreshold = false;//Keep track threshold scaling for print
 
 	bool	_task_should_exit;		/**< if true, task_main() should exit */
 	int		_control_task;			/**< task handle */
@@ -797,7 +797,6 @@ MulticopterAttitudeControl::task_main()
 	fds[0].fd = _ctrl_state_sub;
 	fds[0].events = POLLIN;
 
-	bool throtThreshold = false; //Keep track of when throttle goes over threshold for print -Patrick
 	while (!_task_should_exit) {
 
 		/* wait for up to 100ms for data */
