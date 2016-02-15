@@ -1,3 +1,4 @@
+find.txt
 *.d
 !ROMFS/*/*.d
 !ROMFS/*/*/*.d
