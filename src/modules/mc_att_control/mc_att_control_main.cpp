@@ -125,6 +125,7 @@ public:
 	int		start();
 
 private:
+	const float PID_SCALE = .6;//Amount of PID left at full throttle -Patrick
 
 	bool	_task_should_exit;		/**< if true, task_main() should exit */
 	int		_control_task;			/**< task handle */
@@ -225,7 +226,7 @@ private:
 	struct {
 		math::Vector<3> att_p;					/**< P gain for angular error */
 		math::Vector<3> rate_p;				/**< P gain for angular rate error */
-		//math::Vector<3> rate_i;				/**< I gain for angular rate error */
+		math::Vector<3> rate_i;				/**< I gain for angular rate error */
 		math::Vector<3> rate_d;				/**< D gain for angular rate error */
 	}		_params_adjust;
 
@@ -297,6 +298,8 @@ private:
 	void		task_main();
 
 	void warnx_debug(const char* fmt, ...);
+
+	void adjust_params();
 };
 
 namespace mc_att_control
@@ -751,7 +754,7 @@ MulticopterAttitudeControl::control_attitude_rates(float dt)
 	if (_thrust_sp > MIN_TAKEOFF_THRUST && !_motor_limits.lower_limit && !_motor_limits.upper_limit) {
 		for (int i = 0; i < 3; i++) {
 			if (fabsf(_att_control(i)) < _thrust_sp) {
-				float rate_i = _rates_int(i) + _params.rate_i(i) * rates_err(i) * dt;
+				float rate_i = _rates_int(i) + _params_adjust.rate_i(i) * rates_err(i) * dt;
 
 				if (PX4_ISFINITE(rate_i) && rate_i > -RATES_I_LIMIT && rate_i < RATES_I_LIMIT &&
 				    _att_control(i) > -RATES_I_LIMIT && _att_control(i) < RATES_I_LIMIT) {
@@ -840,34 +843,7 @@ MulticopterAttitudeControl::task_main()
 			vehicle_status_poll();
 			vehicle_motor_limits_poll();
 
-			//Scale roll_tc and pitch_tc based on throttle -Patrick
-			if(_thrust_sp> 0.6f){
-				//If throttle above 60% scale values -Patrick
-				float scaleFactor = (1.0/6.0)/2.25; //old slope:new slope ratio
-				float scaleArray[] = {scaleFactor, scaleFactor, 1.0};
-				math::Vector<3> scale = math::Vector<3>(scaleArray);
-				_params_adjust.att_p = _params.att_p.emult(scale);
-				_params_adjust.rate_p = _params.rate_p.emult(scale);
-				_params_adjust.rate_d = _params.rate_d.emult(scale);
-
-				//Print gains whenever throttle crosses threshold -Patrick
-				if(!throtThreshold){
-					throtThreshold = true;
-					warnx_debug("Throttle crossed threshold from low range to high range");
-				}
-			}else{
-				//If throttle below 60% don't change values -Patrick
-				_params_adjust.att_p = _params.att_p;
-				_params_adjust.rate_p = _params.rate_p;
-				_params_adjust.rate_d = _params.rate_d;
-
-				//Print gains whenever throttle crosses threshold -Patrick
-				if(throtThreshold){
-					throtThreshold = false;
-					warnx_debug("Throttle crossed threshold from high range to low range");
-				}
-			}
-
+			adjust_params();
 
 
 			/* Check if we are in rattitude mode and the pilot is above the threshold on pitch
@@ -991,6 +967,39 @@ MulticopterAttitudeControl::task_main()
 
 	_control_task = -1;
 	return;
+}
+
+void
+MulticopterAttitudeControl::adjust_params(){
+	_params_adjust.att_p = _params.att_p;
+	_params_adjust.rate_p = _params.rate_p;
+	_params_adjust.rate_i = _params.rate_i;
+	_params_adjust.rate_d = _params.rate_d;
+
+
+	//Scale if above threshold
+	if(_thrust_sp> 0.6f){
+		//If throttle above 60% scale values -Patrick
+		float scaleFactor = (1.0/6.0)/2.25; //old slope:new slope ratio
+		float scaleArray[] = {scaleFactor, scaleFactor, 1.0};
+		math::Vector<3> scale = math::Vector<3>(scaleArray);
+		_params_adjust.att_p = _params_adjust.att_p.emult(scale);
+		_params_adjust.rate_p = _params_adjust.rate_p.emult(scale);
+		_params_adjust.rate_d = _params_adjust.rate_d.emult(scale);
+
+		//Print gains whenever throttle crosses threshold -Patrick
+		if(!throtThreshold){
+			throtThreshold = true;
+			warnx_debug("Throttle crossed threshold from low range to high range");
+		}
+	}else{
+		//If throttle below 60% don't change values -Patrick
+		//Print gains whenever throttle crosses threshold -Patrick
+		if(throtThreshold){
+			throtThreshold = false;
+			warnx_debug("Throttle crossed threshold from high range to low range");
+		}
+	}
 }
 
 int
