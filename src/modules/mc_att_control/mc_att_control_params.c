@@ -92,14 +92,14 @@ PARAM_DEFINE_FLOAT(MC_ROLLRATE_P, 0.15f);
 PARAM_DEFINE_FLOAT(MC_ROLLRATE_I, 0.05f);
 
 /**
- * Roll rate D gain
+ * Roll rate D gain x100
  *
  * Roll rate differential gain. Small values help reduce fast oscillations. If value is too big oscillations will appear again.
  *
  * @min 0.0
  * @group Multicopter Attitude Control
  */
-PARAM_DEFINE_FLOAT(MC_ROLLRATE_D, 0.003f);
+PARAM_DEFINE_FLOAT(MC_ROLLRATE_D, 0.3f);
 
 /**
  * Roll rate feedforward
@@ -143,14 +143,14 @@ PARAM_DEFINE_FLOAT(MC_PITCHRATE_P, 0.15f);
 PARAM_DEFINE_FLOAT(MC_PITCHRATE_I, 0.05f);
 
 /**
- * Pitch rate D gain
+ * Pitch rate D gain x100
  *
  * Pitch rate differential gain. Small values help reduce fast oscillations. If value is too big oscillations will appear again.
  *
  * @min 0.0
  * @group Multicopter Attitude Control
  */
-PARAM_DEFINE_FLOAT(MC_PITCHRATE_D, 0.003f);
+PARAM_DEFINE_FLOAT(MC_PITCHRATE_D, 0.3f);
 
 /**
  * Pitch rate feedforward

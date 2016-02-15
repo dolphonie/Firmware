@@ -974,10 +974,13 @@ MulticopterAttitudeControl::adjust_params(){
 	_params_adjust.rate_p = _params.rate_p;
 	_params_adjust.rate_i = _params.rate_i;
 	_params_adjust.rate_d = _params.rate_d;
-
+	//Divide roll and pitch rate d by 100
+	float scale_d_array[] = {.01, .01, 1.0};
+	math::Vector<3> scale_d = math::Vector<3>(scale_d_array);
+	_params_adjust.rate_d = _params_adjust.rate_d.emult(scale_d);
 
 	//Scale if above threshold
-	if(_thrust_sp> 0.6f){
+	if(_thrust_sp> 0.6f&&false){
 		//If throttle above 60% scale values -Patrick
 		float scaleFactor = (1.0/6.0)/2.25; //old slope:new slope ratio
 		float scaleArray[] = {scaleFactor, scaleFactor, 1.0};
