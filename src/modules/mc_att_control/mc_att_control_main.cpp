@@ -81,6 +81,7 @@
 #include <uORB/topics/parameter_update.h>
 #include <uORB/topics/multirotor_motor_limits.h>
 #include <uORB/topics/mc_att_ctrl_status.h>
+#include <uORB/topics/rc_channels.h>
 #include <systemlib/param/param.h>
 #include <systemlib/err.h>
 #include <systemlib/perf_counter.h>
@@ -139,6 +140,7 @@ private:
 	int		_armed_sub;				/**< arming status subscription */
 	int		_vehicle_status_sub;	/**< vehicle status subscription */
 	int 	_motor_limits_sub;		/**< motor limits subscription */
+	int		_rc_channels_sub;		/**< rc channels subscription */
 
 	orb_advert_t	_v_rates_sp_pub;		/**< rate setpoint publication */
 	orb_advert_t	_actuators_0_pub;		/**< attitude actuator controls publication */
@@ -146,6 +148,8 @@ private:
 
 	orb_id_t _rates_sp_id;	/**< pointer to correct rates setpoint uORB metadata structure */
 	orb_id_t _actuators_id;	/**< pointer to correct actuator controls0 uORB metadata structure */
+
+	int		_test_test_param = 0;
 
 	bool		_actuators_0_circuit_breaker_enabled;	/**< circuit breaker to suppress output */
 
@@ -159,6 +163,7 @@ private:
 	struct vehicle_status_s				_vehicle_status;	/**< vehicle status */
 	struct multirotor_motor_limits_s	_motor_limits;		/**< motor limits */
 	struct mc_att_ctrl_status_s 		_controller_status; /**< controller status */
+	struct rc_channels_s				_rc_channels;		/**< rc channels */
 
 	perf_counter_t	_loop_perf;			/**< loop performance counter */
 	perf_counter_t	_controller_latency_perf;
@@ -202,6 +207,8 @@ private:
 		param_t roll_tc;
 		param_t pitch_tc;
 
+		param_t test_param;
+
 	}		_params_handles;		/**< handles for interesting parameters */
 
 	struct {
@@ -220,6 +227,8 @@ private:
 		math::Vector<3> acro_rate_max;		/**< max attitude rates in acro mode */
 		float rattitude_thres;
 		int vtol_type;						/**< 0 = Tailsitter, 1 = Tiltrotor, 2 = Standard airframe */
+
+		float test_param;
 	}		_params;
 
 	//Rescaled PID constants based on throttle position -Patrick
@@ -288,6 +297,11 @@ private:
 	void		vehicle_motor_limits_poll();
 
 	/**
+	 * Get RC channels
+	 */
+	void		rc_channels_poll();
+
+	/**
 	 * Shim for calling task_main from task_create.
 	 */
 	static void	task_main_trampoline(int argc, char *argv[]);
@@ -321,6 +335,7 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_manual_control_sp_sub(-1),
 	_armed_sub(-1),
 	_vehicle_status_sub(-1),
+	_rc_channels_sub(-1),
 
 	/* publications */
 	_v_rates_sp_pub(nullptr),
@@ -347,6 +362,7 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	memset(&_vehicle_status, 0, sizeof(_vehicle_status));
 	memset(&_motor_limits, 0, sizeof(_motor_limits));
 	memset(&_controller_status, 0, sizeof(_controller_status));
+	memset(&_rc_channels, 0, sizeof(_rc_channels));
 	_vehicle_status.is_rotary_wing = true;
 
 	_params.att_p.zero();
@@ -361,6 +377,7 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_params.mc_rate_max.zero();
 	_params.acro_rate_max.zero();
 	_params.rattitude_thres = 1.0f;
+	_params.test_param = 0.0f;
 
 	_rates_prev.zero();
 	_rates_sp.zero();
@@ -397,6 +414,8 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_params_handles.vtol_type 		= 	param_find("VT_TYPE");
 	_params_handles.roll_tc			= 	param_find("MC_ROLL_TC");
 	_params_handles.pitch_tc		= 	param_find("MC_PITCH_TC");
+
+	_params_handles.test_param		=	param_find("MC_TEST_PARAM");
 
 	/* fetch initial parameter values */
 	parameters_update();
@@ -502,6 +521,8 @@ MulticopterAttitudeControl::parameters_update()
 	param_get(_params_handles.rattitude_thres, &_params.rattitude_thres);
 
 	param_get(_params_handles.vtol_type, &_params.vtol_type);
+
+	param_get(_params_handles.test_param, &_params.test_param);
 
 	_actuators_0_circuit_breaker_enabled = circuit_breaker_enabled("CBRK_RATE_CTRL", CBRK_RATE_CTRL_KEY);
 
@@ -618,6 +639,18 @@ MulticopterAttitudeControl::vehicle_motor_limits_poll()
 
 	if (updated) {
 		orb_copy(ORB_ID(multirotor_motor_limits), _motor_limits_sub, &_motor_limits);
+	}
+}
+
+void
+MulticopterAttitudeControl::rc_channels_poll()
+{
+	/* check if there is a new message */
+	bool updated;
+	orb_check(_rc_channels_sub, &updated);
+
+	if (updated) {
+		orb_copy(ORB_ID(rc_channels), _rc_channels_sub, &_rc_channels);
 	}
 }
 
@@ -787,6 +820,7 @@ MulticopterAttitudeControl::task_main()
 	_armed_sub = orb_subscribe(ORB_ID(actuator_armed));
 	_vehicle_status_sub = orb_subscribe(ORB_ID(vehicle_status));
 	_motor_limits_sub = orb_subscribe(ORB_ID(multirotor_motor_limits));
+	_rc_channels_sub = orb_subscribe(ORB_ID(rc_channels));
 
 	/* initialize parameters cache */
 	parameters_update();
@@ -841,6 +875,7 @@ MulticopterAttitudeControl::task_main()
 			vehicle_manual_poll();
 			vehicle_status_poll();
 			vehicle_motor_limits_poll();
+			rc_channels_poll();
 
 			adjust_params();
 
@@ -1000,6 +1035,16 @@ MulticopterAttitudeControl::adjust_params(){
 		if(throtThreshold){
 			throtThreshold = false;
 			warnx_debug("Throttle crossed threshold from high range to low range");
+		}
+	}
+	// test parameters
+	if (++_test_test_param >= 500) {
+		_test_test_param = 0;
+		warnx_debug("test_param: %6.3f", (double)_params.test_param);
+		int nbChan = _rc_channels.channel_count;
+		for (int i=0; i<nbChan; i++) {
+			float c = _rc_channels.channels[i];
+			warnx_debug("channel %2d: %5.3f", i+1, (double)c);
 		}
 	}
 }

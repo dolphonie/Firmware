@@ -291,15 +291,16 @@ PARAM_DEFINE_FLOAT(MC_ACRO_P_MAX, 360.0f);
  */
 PARAM_DEFINE_FLOAT(MC_ACRO_Y_MAX, 360.0f);
 
+
 /**
- * Threshold for Rattitude mode
+ * Test param. Patrick is AWESOME
  *
  * Manual input needed in order to override attitude control rate setpoints
  * and instead pass manual stick inputs as rate setpoints
  *
- * @unit
+ * @unit rUnits
  * @min 0.0
  * @max 1.0
  * @group Multicopter Attitude Control
  */
-PARAM_DEFINE_FLOAT(MC_RATT_TH, 1.0f);
+PARAM_DEFINE_FLOAT(MC_TEST_PARAM, 0.1234f);
