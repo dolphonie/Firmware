@@ -140,6 +140,9 @@ private:
 	int		_vehicle_status_sub;	/**< vehicle status subscription */
 	int 	_motor_limits_sub;		/**< motor limits subscription */
 
+	float _p_values[] = {0,0,0,0,0,0,0,0,0,0,0};
+	float _d_values[] = {0,0,0,0,0,0,0,0,0,0,0};
+
 	orb_advert_t	_v_rates_sp_pub;		/**< rate setpoint publication */
 	orb_advert_t	_actuators_0_pub;		/**< attitude actuator controls publication */
 	orb_advert_t	_controller_status_pub;	/**< controller status publication */
@@ -300,6 +303,8 @@ private:
 	void warnx_debug(const char* fmt, ...);
 
 	void adjust_params();
+
+	float get_gains(float gainArray[], float thrust);
 };
 
 namespace mc_att_control
@@ -979,6 +984,11 @@ MulticopterAttitudeControl::adjust_params(){
 	math::Vector<3> scale_d = math::Vector<3>(scale_d_array);
 	_params_adjust.rate_d = _params_adjust.rate_d.emult(scale_d);
 
+	for(int i = 0; i < 2; i++){
+		_params_adjust.rate_p(i) = get_gains(_p_values,_thrust_sp);
+		_params_adjust.rate_d(i) = get_gains(_d_values,_thrust_sp);
+	}
+
 	//Scale if above threshold
 	if(_thrust_sp> 0.6f&&false){
 		//If throttle above 60% scale values -Patrick
@@ -1002,6 +1012,17 @@ MulticopterAttitudeControl::adjust_params(){
 			warnx_debug("Throttle crossed threshold from high range to low range");
 		}
 	}
+}
+
+float
+MulticopterAttitudeControl::get_gains(float gainArray[], float thrust){
+	thrust = math::constrain(thrust,0,1);
+	if(thrust ==1) return gainArray[10];
+	int index = thrust*10;
+	float lowBound = gainArray[index];
+	float highBound = gainArray[index+1];
+	float fraction = thrust*10.0 - index;
+	return lowBound + (highBound-lowBound)*fraction;
 }
 
 int
