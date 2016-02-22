@@ -125,6 +125,8 @@ public:
 	int		start();
 
 private:
+	int counter = 0;
+
 	bool throtThreshold = false;//Keep track threshold scaling for print
 
 	bool	_task_should_exit;		/**< if true, task_main() should exit */
@@ -139,9 +141,6 @@ private:
 	int		_armed_sub;				/**< arming status subscription */
 	int		_vehicle_status_sub;	/**< vehicle status subscription */
 	int 	_motor_limits_sub;		/**< motor limits subscription */
-
-	float _p_values[] = {0,0,0,0,0,0,0,0,0,0,0};
-	float _d_values[] = {0,0,0,0,0,0,0,0,0,0,0};
 
 	orb_advert_t	_v_rates_sp_pub;		/**< rate setpoint publication */
 	orb_advert_t	_actuators_0_pub;		/**< attitude actuator controls publication */
@@ -205,6 +204,22 @@ private:
 		param_t roll_tc;
 		param_t pitch_tc;
 
+		param_t pitchroll_rate_p30;
+		param_t pitchroll_rate_p40;
+		param_t pitchroll_rate_p50;
+		param_t pitchroll_rate_p60;
+		param_t pitchroll_rate_p70;
+		param_t pitchroll_rate_p80;
+		param_t pitchroll_rate_p90;
+
+		param_t pitchroll_rate_d30;
+		param_t pitchroll_rate_d40;
+		param_t pitchroll_rate_d50;
+		param_t pitchroll_rate_d60;
+		param_t pitchroll_rate_d70;
+		param_t pitchroll_rate_d80;
+		param_t pitchroll_rate_d90;
+
 	}		_params_handles;		/**< handles for interesting parameters */
 
 	struct {
@@ -212,6 +227,8 @@ private:
 		math::Vector<3> rate_p;				/**< P gain for angular rate error */
 		math::Vector<3> rate_i;				/**< I gain for angular rate error */
 		math::Vector<3> rate_d;				/**< D gain for angular rate error */
+		math::Vector<11> pitchroll_rate_p; /**< throttle dependent pitch/roll P gain for angular rate error */
+		math::Vector<11> pitchroll_rate_d; /**< throttle dependent pitch/roll D gain for angular rate error */
 		math::Vector<3>	rate_ff;			/**< Feedforward gain for desired rates */
 		float yaw_ff;						/**< yaw control feed-forward */
 
@@ -304,7 +321,7 @@ private:
 
 	void adjust_params();
 
-	float get_gains(float gainArray[], float thrust);
+	float get_gains(math::Vector<11> gains, float thrust);
 };
 
 namespace mc_att_control
@@ -402,6 +419,20 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_params_handles.vtol_type 		= 	param_find("VT_TYPE");
 	_params_handles.roll_tc			= 	param_find("MC_ROLL_TC");
 	_params_handles.pitch_tc		= 	param_find("MC_PITCH_TC");
+	_params_handles.pitchroll_rate_p30	= 	param_find("MC_PR_RATE_P30");
+	_params_handles.pitchroll_rate_p40	= 	param_find("MC_PR_RATE_P40");
+	_params_handles.pitchroll_rate_p50	= 	param_find("MC_PR_RATE_P50");
+	_params_handles.pitchroll_rate_p60	= 	param_find("MC_PR_RATE_P60");
+	_params_handles.pitchroll_rate_p70	= 	param_find("MC_PR_RATE_P70");
+	_params_handles.pitchroll_rate_p80	= 	param_find("MC_PR_RATE_P80");
+	_params_handles.pitchroll_rate_p90	= 	param_find("MC_PR_RATE_P90");
+	_params_handles.pitchroll_rate_d30	= 	param_find("MC_PR_RATE_D30");
+	_params_handles.pitchroll_rate_d40	= 	param_find("MC_PR_RATE_D40");
+	_params_handles.pitchroll_rate_d50	= 	param_find("MC_PR_RATE_D50");
+	_params_handles.pitchroll_rate_d60	= 	param_find("MC_PR_RATE_D60");
+	_params_handles.pitchroll_rate_d70	= 	param_find("MC_PR_RATE_D70");
+	_params_handles.pitchroll_rate_d80	= 	param_find("MC_PR_RATE_D80");
+	_params_handles.pitchroll_rate_d90	= 	param_find("MC_PR_RATE_D90");
 
 	/* fetch initial parameter values */
 	parameters_update();
@@ -472,6 +503,40 @@ MulticopterAttitudeControl::parameters_update()
 	_params.rate_d(1) = v * (ATTITUDE_TC_DEFAULT / pitch_tc);
 	param_get(_params_handles.pitch_rate_ff, &v);
 	_params.rate_ff(1) = v;
+
+	/* pitch/roll P gains, throttle dependent */
+	param_get(_params_handles.pitchroll_rate_p30, &v);
+	for (int i=0; i<4; i++)	_params.pitchroll_rate_p(i) = v;
+	param_get(_params_handles.pitchroll_rate_p40, &v);
+	_params.pitchroll_rate_p(4) = v;
+	param_get(_params_handles.pitchroll_rate_p50, &v);
+	_params.pitchroll_rate_p(5) = v;
+	param_get(_params_handles.pitchroll_rate_p60, &v);
+	_params.pitchroll_rate_p(6) = v;
+	param_get(_params_handles.pitchroll_rate_p70, &v);
+	_params.pitchroll_rate_p(7) = v;
+	param_get(_params_handles.pitchroll_rate_p80, &v);
+	_params.pitchroll_rate_p(8) = v;
+	param_get(_params_handles.pitchroll_rate_p90, &v);
+	_params.pitchroll_rate_p(9) = v;
+	_params.pitchroll_rate_p(10) = v;
+
+	/* pitch/roll D gains, throttle dependent */
+	param_get(_params_handles.pitchroll_rate_d30, &v);
+	for (int i=0; i<4; i++)	_params.pitchroll_rate_d(i) = v;
+	param_get(_params_handles.pitchroll_rate_d40, &v);
+	_params.pitchroll_rate_d(4) = v;
+	param_get(_params_handles.pitchroll_rate_d50, &v);
+	_params.pitchroll_rate_d(5) = v;
+	param_get(_params_handles.pitchroll_rate_d60, &v);
+	_params.pitchroll_rate_d(6) = v;
+	param_get(_params_handles.pitchroll_rate_d70, &v);
+	_params.pitchroll_rate_d(7) = v;
+	param_get(_params_handles.pitchroll_rate_d80, &v);
+	_params.pitchroll_rate_d(8) = v;
+	param_get(_params_handles.pitchroll_rate_d90, &v);
+	_params.pitchroll_rate_d(9) = v;
+	_params.pitchroll_rate_d(10) = v;
 
 	/* yaw gains */
 	param_get(_params_handles.yaw_p, &v);
@@ -979,15 +1044,23 @@ MulticopterAttitudeControl::adjust_params(){
 	_params_adjust.rate_p = _params.rate_p;
 	_params_adjust.rate_i = _params.rate_i;
 	_params_adjust.rate_d = _params.rate_d;
+
+
+	for(int i = 0; i < 2; i++){
+		if(_params.rate_p(0)<0||_params.rate_p(1)<0)
+			_params_adjust.rate_p(i) = get_gains(_params.pitchroll_rate_p,_thrust_sp);
+		if(_params.rate_d(0)<0||_params.rate_d(1)<0)
+			_params_adjust.rate_d(i) = get_gains(_params.pitchroll_rate_d,_thrust_sp);
+	}
+
 	//Divide roll and pitch rate d by 100
 	float scale_d_array[] = {.01, .01, 1.0};
 	math::Vector<3> scale_d = math::Vector<3>(scale_d_array);
 	_params_adjust.rate_d = _params_adjust.rate_d.emult(scale_d);
 
-	for(int i = 0; i < 2; i++){
-		_params_adjust.rate_p(i) = get_gains(_p_values,_thrust_sp);
-		_params_adjust.rate_d(i) = get_gains(_d_values,_thrust_sp);
-	}
+	float scale_p_array[] = {1.0,1.0,1.0};
+	math::Vector<3>scale_p = math::Vector<3>(scale_p_array);
+	_params_adjust.rate_p = _params_adjust.rate_p.emult(scale_p);
 
 	//Scale if above threshold
 	if(_thrust_sp> 0.6f&&false){
@@ -1012,16 +1085,30 @@ MulticopterAttitudeControl::adjust_params(){
 			warnx_debug("Throttle crossed threshold from high range to low range");
 		}
 	}
+
+	if(++counter>=500){
+		counter = 0;
+		warnx_debug("Thrust SP: %6.3f",(double) _thrust_sp);
+		warnx_debug("Rate P: %8.3f",(double) _params_adjust.rate_p(0));
+		warnx_debug("Rate D: %8.5f",(double) _params_adjust.rate_d(0));
+		for (int i=0; i<11; i++) {
+			warnx_debug("Rate P[%2d]: %6.3f", i, (double) _params.pitchroll_rate_p(i));
+		}
+		for (int i=0; i<11; i++) {
+			warnx_debug("Rate D[%2d]: %6.3f", i, (double) _params.pitchroll_rate_d(i));
+		}
+
+	}
 }
 
 float
-MulticopterAttitudeControl::get_gains(float gainArray[], float thrust){
-	thrust = math::constrain(thrust,0,1);
-	if(thrust ==1) return gainArray[10];
+MulticopterAttitudeControl::get_gains(math::Vector<11> gains, float thrust){
+	thrust = math::constrain(thrust,0.0f,1.0f);
+	if(thrust >= 1) return gains(10);
 	int index = thrust*10;
-	float lowBound = gainArray[index];
-	float highBound = gainArray[index+1];
-	float fraction = thrust*10.0 - index;
+	float lowBound = gains(index);
+	float highBound = gains(index +1);
+	float fraction = thrust*10.0f - index;
 	return lowBound + (highBound-lowBound)*fraction;
 }
 

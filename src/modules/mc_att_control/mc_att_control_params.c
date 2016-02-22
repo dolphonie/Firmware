@@ -74,9 +74,9 @@ PARAM_DEFINE_FLOAT(MC_ROLL_P, 6.5f);
 /**
  * Roll rate P gain
  *
- * Roll rate proportional gain, i.e. control output for angular speed error 1 rad/s.
+ * Roll rate proportional gain, i.e. control output for angular speed error 1 rad/s. A value less than 0 means use arrays.
  *
- * @min 0.0
+ * @min -1.0
  * @group Multicopter Attitude Control
  */
 PARAM_DEFINE_FLOAT(MC_ROLLRATE_P, 0.15f);
@@ -94,9 +94,9 @@ PARAM_DEFINE_FLOAT(MC_ROLLRATE_I, 0.05f);
 /**
  * Roll rate D gain x100
  *
- * Roll rate differential gain. Small values help reduce fast oscillations. If value is too big oscillations will appear again.
+ * Roll rate differential gain. Small values help reduce fast oscillations. If value is too big oscillations will appear again. A value less than 0 means use arrays.
  *
- * @min 0.0
+ * @min -1.0
  * @group Multicopter Attitude Control
  */
 PARAM_DEFINE_FLOAT(MC_ROLLRATE_D, 0.3f);
@@ -125,9 +125,9 @@ PARAM_DEFINE_FLOAT(MC_PITCH_P, 6.5f);
 /**
  * Pitch rate P gain
  *
- * Pitch rate proportional gain, i.e. control output for angular speed error 1 rad/s.
+ * Pitch rate proportional gain, i.e. control output for angular speed error 1 rad/s. A value less than 0 means use arrays.
  *
- * @min 0.0
+ * @min -1.0
  * @group Multicopter Attitude Control
  */
 PARAM_DEFINE_FLOAT(MC_PITCHRATE_P, 0.15f);
@@ -145,9 +145,9 @@ PARAM_DEFINE_FLOAT(MC_PITCHRATE_I, 0.05f);
 /**
  * Pitch rate D gain x100
  *
- * Pitch rate differential gain. Small values help reduce fast oscillations. If value is too big oscillations will appear again.
+ * Pitch rate differential gain. Small values help reduce fast oscillations. If value is too big oscillations will appear again. A value less than 0 means use arrays.
  *
- * @min 0.0
+ * @min -1.0
  * @group Multicopter Attitude Control
  */
 PARAM_DEFINE_FLOAT(MC_PITCHRATE_D, 0.3f);
@@ -303,3 +303,130 @@ PARAM_DEFINE_FLOAT(MC_ACRO_Y_MAX, 360.0f);
  * @group Multicopter Attitude Control
  */
 PARAM_DEFINE_FLOAT(MC_RATT_TH, 1.0f);
+
+/**
+ * Pit/Roll rate P gain @ 30% throttle
+ *
+ * Pit/Roll rate proportional gain, i.e. control output for angular speed error 1 rad/s.
+ *
+ * @min 0.0
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_PR_RATE_P30, 0.22f);
+/**
+ * Pit/Roll rate P gain @ 40% throttle
+ *
+ * Pit/Roll rate proportional gain, i.e. control output for angular speed error 1 rad/s.
+ *
+ * @min 0.0
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_PR_RATE_P40, 0.095f);
+/**
+ * Pit/Roll rate P gain @ 50% throttle
+ *
+ * Pit/Roll rate proportional gain, i.e. control output for angular speed error 1 rad/s.
+ *
+ * @min 0.0
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_PR_RATE_P50, 0.086f);
+/**
+ * Pit/Roll rate P gain @ 60% throttle
+ *
+ * Pit/Roll rate proportional gain, i.e. control output for angular speed error 1 rad/s.
+ *
+ * @min 0.0
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_PR_RATE_P60, 0.05f);
+/**
+ * Pit/Roll rate P gain @ 70% throttle
+ *
+ * Pit/Roll rate proportional gain, i.e. control output for angular speed error 1 rad/s.
+ *
+ * @min 0.0
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_PR_RATE_P70, 0.035f);
+/**
+ * Pit/Roll rate P gain @ 80% throttle
+ *
+ * Pit/Roll rate proportional gain, i.e. control output for angular speed error 1 rad/s.
+ *
+ * @min 0.0
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_PR_RATE_P80, 0.035f);
+/**
+ * Pit/Roll rate P gain @ 90% throttle
+ *
+ * Pit/Roll rate proportional gain, i.e. control output for angular speed error 1 rad/s.
+ *
+ * @min 0.0
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_PR_RATE_P90, 0.14f);
+/**
+ * Pit/Roll rate D gain x100 @ 30% throttle
+ *
+ * Pit/Roll rate differential gain. Small values help reduce fast oscillations. If value is too big oscillations will appear again.
+ *
+ * @min 0.0
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_PR_RATE_D30, 1.2f);
+/**
+ * Pit/Roll rate D gain x100 @ 40% throttle
+ *
+ * Pit/Roll rate differential gain. Small values help reduce fast oscillations. If value is too big oscillations will appear again.
+ *
+ * @min 0.0
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_PR_RATE_D40, 0.4f);
+/**
+ * Pit/Roll rate D gain x100 @ 50% throttle
+ *
+ * Pit/Roll rate differential gain. Small values help reduce fast oscillations. If value is too big oscillations will appear again.
+ *
+ * @min 0.0
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_PR_RATE_D50, 0.25f);
+/**
+ * Pit/Roll rate D gain x100 @ 60% throttle
+ *
+ * Pit/Roll rate differential gain. Small values help reduce fast oscillations. If value is too big oscillations will appear again.
+ *
+ * @min 0.0
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_PR_RATE_D60, 0.2f);
+/**
+ * Pit/Roll rate D gain x100 @ 70% throttle
+ *
+ * Pit/Roll rate differential gain. Small values help reduce fast oscillations. If value is too big oscillations will appear again.
+ *
+ * @min 0.0
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_PR_RATE_D70, 0.15f);
+/**
+ * Pit/Roll rate D gain x100 @ 80% throttle
+ *
+ * Pit/Roll rate differential gain. Small values help reduce fast oscillations. If value is too big oscillations will appear again.
+ *
+ * @min 0.0
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_PR_RATE_D80, 0.08f);
+/**
+ * Pit/Roll rate D gain x100 @ 90% throttle
+ *
+ * Pit/Roll rate differential gain. Small values help reduce fast oscillations. If value is too big oscillations will appear again.
+ *
+ * @min 0.0
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_PR_RATE_D90, 0.2f);
