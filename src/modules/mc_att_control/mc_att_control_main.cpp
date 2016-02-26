@@ -102,7 +102,7 @@ extern "C" __EXPORT int mc_att_control_main(int argc, char *argv[]);
 #define RATES_I_LIMIT	0.3f
 #define MANUAL_THROTTLE_MAX_MULTICOPTER	0.9f
 #define ATTITUDE_TC_DEFAULT 0.2f
-#define PRINT_DEBUG true
+#define PRINT_DEBUG false
 
 class MulticopterAttitudeControl
 {
@@ -220,6 +220,8 @@ private:
 		param_t pitchroll_rate_d80;
 		param_t pitchroll_rate_d90;
 
+		param_t pitch_scale_factor;
+
 	}		_params_handles;		/**< handles for interesting parameters */
 
 	struct {
@@ -231,6 +233,7 @@ private:
 		math::Vector<11> pitchroll_rate_d; /**< throttle dependent pitch/roll D gain for angular rate error */
 		math::Vector<3>	rate_ff;			/**< Feedforward gain for desired rates */
 		float yaw_ff;						/**< yaw control feed-forward */
+		float pitch_scale;					/**< Factor to scale array by to get pitch constants*/
 
 		float roll_rate_max;
 		float pitch_rate_max;
@@ -433,6 +436,7 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_params_handles.pitchroll_rate_d70	= 	param_find("MC_PR_RATE_D70");
 	_params_handles.pitchroll_rate_d80	= 	param_find("MC_PR_RATE_D80");
 	_params_handles.pitchroll_rate_d90	= 	param_find("MC_PR_RATE_D90");
+	_params_handles.pitch_scale_factor  =   param_find("MC_PITCH_SCALE");
 
 	/* fetch initial parameter values */
 	parameters_update();
@@ -537,6 +541,10 @@ MulticopterAttitudeControl::parameters_update()
 	param_get(_params_handles.pitchroll_rate_d90, &v);
 	_params.pitchroll_rate_d(9) = v;
 	_params.pitchroll_rate_d(10) = v;
+
+	/*Pitch array scale factor*/
+	param_get(_params_handles.pitch_scale_factor, &v);
+	_params.pitch_scale = v;
 
 	/* yaw gains */
 	param_get(_params_handles.yaw_p, &v);
@@ -1045,22 +1053,22 @@ MulticopterAttitudeControl::adjust_params(){
 	_params_adjust.rate_i = _params.rate_i;
 	_params_adjust.rate_d = _params.rate_d;
 
-
+	float thrust_dependent_roll_p = get_gains(_params.pitchroll_rate_p,_thrust_sp);
+	float thrust_dependent_roll_d = get_gains(_params.pitchroll_rate_d,_thrust_sp);
 	for(int i = 0; i < 2; i++){
+		// i==0 is roll, otherwise pitch
 		if(_params.rate_p(0)<0||_params.rate_p(1)<0)
-			_params_adjust.rate_p(i) = get_gains(_params.pitchroll_rate_p,_thrust_sp);
+			_params_adjust.rate_p(i) = thrust_dependent_roll_p * (i==0 ? 1 : _params.pitch_scale);
 		if(_params.rate_d(0)<0||_params.rate_d(1)<0)
-			_params_adjust.rate_d(i) = get_gains(_params.pitchroll_rate_d,_thrust_sp);
+			_params_adjust.rate_d(i) = thrust_dependent_roll_d * (i==0 ? 1 : _params.pitch_scale);
 	}
 
-	//Divide roll and pitch rate d by 100
-	float scale_d_array[] = {.01, .01, 1.0};
-	math::Vector<3> scale_d = math::Vector<3>(scale_d_array);
-	_params_adjust.rate_d = _params_adjust.rate_d.emult(scale_d);
-
-	float scale_p_array[] = {1.0,1.0,1.0};
-	math::Vector<3>scale_p = math::Vector<3>(scale_p_array);
-	_params_adjust.rate_p = _params_adjust.rate_p.emult(scale_p);
+	// QGroundControl doesn't allow small enough values for P and D rate gains
+	// Therefore divide roll and pitch rate p and d gains by 1000 -Patrick
+	float scale_pd_array[] = {.001, .001, 1.0};
+	math::Vector<3> scale_pd = math::Vector<3>(scale_pd_array);
+	_params_adjust.rate_d = _params_adjust.rate_d.emult(scale_pd);
+	_params_adjust.rate_p = _params_adjust.rate_p.emult(scale_pd);
 
 	//Scale if above threshold
 	if(_thrust_sp> 0.6f&&false){
@@ -1088,15 +1096,16 @@ MulticopterAttitudeControl::adjust_params(){
 
 	if(++counter>=500){
 		counter = 0;
-		warnx_debug("Thrust SP: %6.3f",(double) _thrust_sp);
-		warnx_debug("Rate P: %8.3f",(double) _params_adjust.rate_p(0));
-		warnx_debug("Rate D: %8.5f",(double) _params_adjust.rate_d(0));
+		warnx_debug("Thrust: %6.3f",(double) _thrust_sp);
+		warnx_debug("          roll       pitch ");
+		warnx_debug("Rate P: %9.5f  %9.5f",(double) _params_adjust.rate_p(0),(double)_params_adjust.rate_p(1));
+		warnx_debug("Rate D: %9.5f  %9.5f",(double) _params_adjust.rate_d(0),(double)_params_adjust.rate_d(1));
 		for (int i=0; i<11; i++) {
-			warnx_debug("Rate P[%2d]: %6.3f", i, (double) _params.pitchroll_rate_p(i));
+			warnx_debug("Rate P[%2d]=%8.3f    Rate D[%2d]=%8.3f",
+						i, (double) _params.pitchroll_rate_p(i),
+						i, (double) _params.pitchroll_rate_d(i));
 		}
-		for (int i=0; i<11; i++) {
-			warnx_debug("Rate D[%2d]: %6.3f", i, (double) _params.pitchroll_rate_d(i));
-		}
+		warnx_debug("");
 
 	}
 }
