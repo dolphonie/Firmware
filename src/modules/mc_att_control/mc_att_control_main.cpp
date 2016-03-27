@@ -102,7 +102,7 @@ extern "C" __EXPORT int mc_att_control_main(int argc, char *argv[]);
 #define RATES_I_LIMIT	0.3f
 #define MANUAL_THROTTLE_MAX_MULTICOPTER	0.9f
 #define ATTITUDE_TC_DEFAULT 0.2f
-#define PRINT_DEBUG false
+#define PRINT_DEBUG true
 
 class MulticopterAttitudeControl
 {
@@ -141,6 +141,7 @@ private:
 	int		_armed_sub;				/**< arming status subscription */
 	int		_vehicle_status_sub;	/**< vehicle status subscription */
 	int 	_motor_limits_sub;		/**< motor limits subscription */
+	int		_rc_channels_sub;		/**< RC channels subscription -Patrick*/
 
 	orb_advert_t	_v_rates_sp_pub;		/**< rate setpoint publication */
 	orb_advert_t	_actuators_0_pub;		/**< attitude actuator controls publication */
@@ -161,6 +162,8 @@ private:
 	struct vehicle_status_s				_vehicle_status;	/**< vehicle status */
 	struct multirotor_motor_limits_s	_motor_limits;		/**< motor limits */
 	struct mc_att_ctrl_status_s 		_controller_status; /**< controller status */
+	struct rc_channels_s				_rc_channels;		/**< RC Channels */
+
 
 	perf_counter_t	_loop_perf;			/**< loop performance counter */
 	perf_counter_t	_controller_latency_perf;
@@ -309,6 +312,11 @@ private:
 	 * Check for vehicle motor limits status.
 	 */
 	void		vehicle_motor_limits_poll();
+
+ 	/**
+	 * Check for RC channels status. -Patrick
+	 */
+	void		vehicle_rc_channels_poll();
 
 	/**
 	 * Shim for calling task_main from task_create.
@@ -700,6 +708,16 @@ MulticopterAttitudeControl::vehicle_motor_limits_poll()
 }
 
 void
+MulticopterAttitudeControl::vehicle_rc_channels_poll(){
+	bool updated;
+	orb_check(_rc_channels_sub, &updated);
+
+	if (updated) {
+		orb_copy(ORB_ID(rc_channels), _rc_channels_sub, &_rc_channels);
+	}
+}
+
+void
 MulticopterAttitudeControl::warnx_debug(const char* fmt, ...) {
 	va_list args;
 	va_start(args, fmt);
@@ -843,6 +861,7 @@ MulticopterAttitudeControl::control_attitude_rates(float dt)
 	}
 }
 
+
 void
 MulticopterAttitudeControl::task_main_trampoline(int argc, char *argv[])
 {
@@ -865,6 +884,7 @@ MulticopterAttitudeControl::task_main()
 	_armed_sub = orb_subscribe(ORB_ID(actuator_armed));
 	_vehicle_status_sub = orb_subscribe(ORB_ID(vehicle_status));
 	_motor_limits_sub = orb_subscribe(ORB_ID(multirotor_motor_limits));
+	_rc_channels_sub =  orb_subscribe(ORB_ID(rc_channels));
 
 	/* initialize parameters cache */
 	parameters_update();
@@ -919,6 +939,7 @@ MulticopterAttitudeControl::task_main()
 			vehicle_manual_poll();
 			vehicle_status_poll();
 			vehicle_motor_limits_poll();
+			vehicle_rc_channels_poll();
 
 			adjust_params();
 
@@ -1096,7 +1117,7 @@ MulticopterAttitudeControl::adjust_params(){
 
 	if(++counter>=500){
 		counter = 0;
-		warnx_debug("Thrust: %6.3f",(double) _thrust_sp);
+		/*warnx_debug("Thrust: %6.3f",(double) _thrust_sp);
 		warnx_debug("          roll       pitch ");
 		warnx_debug("Rate P: %9.5f  %9.5f",(double) _params_adjust.rate_p(0),(double)_params_adjust.rate_p(1));
 		warnx_debug("Rate D: %9.5f  %9.5f",(double) _params_adjust.rate_d(0),(double)_params_adjust.rate_d(1));
@@ -1104,9 +1125,9 @@ MulticopterAttitudeControl::adjust_params(){
 			warnx_debug("Rate P[%2d]=%8.3f    Rate D[%2d]=%8.3f",
 						i, (double) _params.pitchroll_rate_p(i),
 						i, (double) _params.pitchroll_rate_d(i));
-		}
+		}*/
+		warnx_debug("Channel 6: %9.5f", (double) _rc_channels.channels[5]);
 		warnx_debug("");
-
 	}
 }
 
