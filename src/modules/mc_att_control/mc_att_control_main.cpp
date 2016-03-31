@@ -102,6 +102,7 @@ extern "C" __EXPORT int mc_att_control_main(int argc, char *argv[]);
 #define RATES_I_LIMIT	0.3f
 #define MANUAL_THROTTLE_MAX_MULTICOPTER	0.9f
 #define ATTITUDE_TC_DEFAULT 0.2f
+#define PULSE_LENGTH 1e5
 #define PRINT_DEBUG true
 
 class MulticopterAttitudeControl
@@ -128,6 +129,7 @@ private:
 	int counter = 0;
 
 	bool throtThreshold = false;//Keep track threshold scaling for print
+
 
 	bool	_task_should_exit;		/**< if true, task_main() should exit */
 	int		_control_task;			/**< task handle */
@@ -225,6 +227,8 @@ private:
 
 		param_t pitch_scale_factor;
 
+		param_t pulse_channel;
+		param_t pulse_channel_threshold;
 	}		_params_handles;		/**< handles for interesting parameters */
 
 	struct {
@@ -243,6 +247,9 @@ private:
 		float yaw_rate_max;
 		math::Vector<3> mc_rate_max;		/**< attitude rate limits in stabilized modes */
 
+		int pulse_channel;
+		float pulse_channel_threshold;
+
 		math::Vector<3> acro_rate_max;		/**< max attitude rates in acro mode */
 		float rattitude_thres;
 		int vtol_type;						/**< 0 = Tailsitter, 1 = Tiltrotor, 2 = Standard airframe */
@@ -255,6 +262,14 @@ private:
 		math::Vector<3> rate_i;				/**< I gain for angular rate error */
 		math::Vector<3> rate_d;				/**< D gain for angular rate error */
 	}		_params_adjust;
+
+
+
+	struct {
+		bool _in_high_range = true;//Keep track pulse threshold
+		hrt_abstime start_time;
+
+	}		_pulse;
 
 	TailsitterRecovery *_ts_opt_recovery;	/**< Computes optimal rates for tailsitter recovery */
 
@@ -394,6 +409,8 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_params.mc_rate_max.zero();
 	_params.acro_rate_max.zero();
 	_params.rattitude_thres = 1.0f;
+	_params.pulse_channel = 0;
+	_params.pulse_channel_threshold = 0;
 
 	_rates_prev.zero();
 	_rates_sp.zero();
@@ -445,6 +462,8 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_params_handles.pitchroll_rate_d80	= 	param_find("MC_PR_RATE_D80");
 	_params_handles.pitchroll_rate_d90	= 	param_find("MC_PR_RATE_D90");
 	_params_handles.pitch_scale_factor  =   param_find("MC_PITCH_SCALE");
+	_params_handles.pulse_channel  =   param_find("MC_PULSE_SW");
+	_params_handles.pulse_channel_threshold =   param_find("MC_PULSE_TH");
 
 	/* fetch initial parameter values */
 	parameters_update();
@@ -549,6 +568,13 @@ MulticopterAttitudeControl::parameters_update()
 	param_get(_params_handles.pitchroll_rate_d90, &v);
 	_params.pitchroll_rate_d(9) = v;
 	_params.pitchroll_rate_d(10) = v;
+
+	/* Pulse switch data */
+	int i;
+	param_get(_params_handles.pulse_channel, &i);
+	_params.pulse_channel = i;
+	param_get(_params_handles.pulse_channel_threshold, &v);
+	_params.pulse_channel_threshold = v;
 
 	/*Pitch array scale factor*/
 	param_get(_params_handles.pitch_scale_factor, &v);
@@ -995,7 +1021,35 @@ MulticopterAttitudeControl::task_main()
 				/* attitude controller disabled, poll rates setpoint topic */
 				if (_v_control_mode.flag_control_manual_enabled) {
 					/* manual rates control - ACRO mode */
-					_rates_sp = math::Vector<3>(_manual_control_sp.y, -_manual_control_sp.x,
+
+					//Pulse if above threshold -Patrick
+					float y_rate = _manual_control_sp.y;
+					if(_params.pulse_channel != 0 ){
+						hrt_abstime cur_time = hrt_absolute_time();
+						if(_rc_channels.channels[_params.pulse_channel -1] >=_params.pulse_channel_threshold){
+							if(!_pulse._in_high_range){
+								_pulse._in_high_range = true;
+								_pulse.start_time = hrt_absolute_time();
+								warnx_debug("Pulse starting");
+							}
+							hrt_abstime elapsed_time = cur_time -_pulse.start_time;
+							if(elapsed_time > PULSE_LENGTH * 2){
+								//warnx_debug("Pulse ended");
+							}else if(elapsed_time > PULSE_LENGTH){
+								y_rate = 1;
+								//warnx_debug("Y rate 1");
+							} else {
+								y_rate = -1;
+								//warnx_debug("Y rate -1");
+							}
+						}else{
+							if(_pulse._in_high_range){
+								_pulse._in_high_range = false;
+							}
+						}
+					}
+
+					_rates_sp = math::Vector<3>(y_rate, -_manual_control_sp.x,
 								    _manual_control_sp.r).emult(_params.acro_rate_max);
 					_thrust_sp = math::min(_manual_control_sp.z, MANUAL_THROTTLE_MAX_MULTICOPTER);
 

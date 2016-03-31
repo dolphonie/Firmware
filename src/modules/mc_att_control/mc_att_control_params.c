@@ -439,3 +439,23 @@ PARAM_DEFINE_FLOAT(MC_PR_RATE_D90, 2f);
  * @group Multicopter Attitude Control
  */
 PARAM_DEFINE_FLOAT(MC_PITCH_SCALE, 1.0f);
+/**
+ * Channel to send pulse on
+ *
+ * A value of 0 means disable feature. When specified switch is flicked over the threshold and in acro mode, quad will receive rapid roll pulse.
+ *
+ * @min 0
+ * @max 18
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_INT32(MC_PULSE_SW, 0);
+/**
+ * Threshold for pulse switch
+ *
+ * When specified switch is flicked over the threshold and in acro mode, quad will receive rapid roll pulse
+ *
+ * @min -1.0
+ * @max 1.0
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_PULSE_TH, .25f);
