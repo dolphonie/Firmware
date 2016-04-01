@@ -103,7 +103,7 @@ extern "C" __EXPORT int mc_att_control_main(int argc, char *argv[]);
 #define MANUAL_THROTTLE_MAX_MULTICOPTER	0.9f
 #define ATTITUDE_TC_DEFAULT 0.2f
 #define PULSE_LENGTH 1e5
-#define PRINT_DEBUG true
+#define PRINT_DEBUG false
 
 class MulticopterAttitudeControl
 {
