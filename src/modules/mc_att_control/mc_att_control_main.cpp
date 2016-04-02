@@ -102,6 +102,7 @@ extern "C" __EXPORT int mc_att_control_main(int argc, char *argv[]);
 #define RATES_I_LIMIT	0.3f
 #define MANUAL_THROTTLE_MAX_MULTICOPTER	0.9f
 #define ATTITUDE_TC_DEFAULT 0.2f
+#define PULSE_LENGTH 1e5
 #define PRINT_DEBUG false
 
 class MulticopterAttitudeControl
@@ -129,6 +130,7 @@ private:
 
 	bool throtThreshold = false;//Keep track threshold scaling for print
 
+
 	bool	_task_should_exit;		/**< if true, task_main() should exit */
 	int		_control_task;			/**< task handle */
 
@@ -141,6 +143,7 @@ private:
 	int		_armed_sub;				/**< arming status subscription */
 	int		_vehicle_status_sub;	/**< vehicle status subscription */
 	int 	_motor_limits_sub;		/**< motor limits subscription */
+	int		_rc_channels_sub;		/**< RC channels subscription -Patrick*/
 
 	orb_advert_t	_v_rates_sp_pub;		/**< rate setpoint publication */
 	orb_advert_t	_actuators_0_pub;		/**< attitude actuator controls publication */
@@ -161,6 +164,8 @@ private:
 	struct vehicle_status_s				_vehicle_status;	/**< vehicle status */
 	struct multirotor_motor_limits_s	_motor_limits;		/**< motor limits */
 	struct mc_att_ctrl_status_s 		_controller_status; /**< controller status */
+	struct rc_channels_s				_rc_channels;		/**< RC Channels */
+
 
 	perf_counter_t	_loop_perf;			/**< loop performance counter */
 	perf_counter_t	_controller_latency_perf;
@@ -204,6 +209,8 @@ private:
 		param_t roll_tc;
 		param_t pitch_tc;
 
+		param_t pitchroll_rate_p10;
+		param_t pitchroll_rate_p20;
 		param_t pitchroll_rate_p30;
 		param_t pitchroll_rate_p40;
 		param_t pitchroll_rate_p50;
@@ -212,6 +219,8 @@ private:
 		param_t pitchroll_rate_p80;
 		param_t pitchroll_rate_p90;
 
+		param_t pitchroll_rate_d10;
+		param_t pitchroll_rate_d20;
 		param_t pitchroll_rate_d30;
 		param_t pitchroll_rate_d40;
 		param_t pitchroll_rate_d50;
@@ -222,6 +231,8 @@ private:
 
 		param_t pitch_scale_factor;
 
+		param_t pulse_channel;
+		param_t pulse_channel_threshold;
 	}		_params_handles;		/**< handles for interesting parameters */
 
 	struct {
@@ -240,6 +251,9 @@ private:
 		float yaw_rate_max;
 		math::Vector<3> mc_rate_max;		/**< attitude rate limits in stabilized modes */
 
+		int pulse_channel;
+		float pulse_channel_threshold;
+
 		math::Vector<3> acro_rate_max;		/**< max attitude rates in acro mode */
 		float rattitude_thres;
 		int vtol_type;						/**< 0 = Tailsitter, 1 = Tiltrotor, 2 = Standard airframe */
@@ -252,6 +266,14 @@ private:
 		math::Vector<3> rate_i;				/**< I gain for angular rate error */
 		math::Vector<3> rate_d;				/**< D gain for angular rate error */
 	}		_params_adjust;
+
+
+
+	struct {
+		bool _in_high_range = true;//Keep track pulse threshold
+		hrt_abstime start_time;
+
+	}		_pulse;
 
 	TailsitterRecovery *_ts_opt_recovery;	/**< Computes optimal rates for tailsitter recovery */
 
@@ -309,6 +331,11 @@ private:
 	 * Check for vehicle motor limits status.
 	 */
 	void		vehicle_motor_limits_poll();
+
+ 	/**
+	 * Check for RC channels status. -Patrick
+	 */
+	void		vehicle_rc_channels_poll();
 
 	/**
 	 * Shim for calling task_main from task_create.
@@ -379,6 +406,8 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_params.rate_i.zero();
 	_params.rate_d.zero();
 	_params.rate_ff.zero();
+	_params.pitchroll_rate_d.zero();
+	_params.pitchroll_rate_p.zero();
 	_params.yaw_ff = 0.0f;
 	_params.roll_rate_max = 0.0f;
 	_params.pitch_rate_max = 0.0f;
@@ -386,6 +415,9 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_params.mc_rate_max.zero();
 	_params.acro_rate_max.zero();
 	_params.rattitude_thres = 1.0f;
+	_params.pulse_channel = 0;
+	_params.pulse_channel_threshold = 0;
+	_params.pitch_scale = 0.0f;
 
 	_rates_prev.zero();
 	_rates_sp.zero();
@@ -422,6 +454,8 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_params_handles.vtol_type 		= 	param_find("VT_TYPE");
 	_params_handles.roll_tc			= 	param_find("MC_ROLL_TC");
 	_params_handles.pitch_tc		= 	param_find("MC_PITCH_TC");
+	_params_handles.pitchroll_rate_p10	= 	param_find("MC_PR_RATE_P10");
+	_params_handles.pitchroll_rate_p20	= 	param_find("MC_PR_RATE_P20");
 	_params_handles.pitchroll_rate_p30	= 	param_find("MC_PR_RATE_P30");
 	_params_handles.pitchroll_rate_p40	= 	param_find("MC_PR_RATE_P40");
 	_params_handles.pitchroll_rate_p50	= 	param_find("MC_PR_RATE_P50");
@@ -429,6 +463,8 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_params_handles.pitchroll_rate_p70	= 	param_find("MC_PR_RATE_P70");
 	_params_handles.pitchroll_rate_p80	= 	param_find("MC_PR_RATE_P80");
 	_params_handles.pitchroll_rate_p90	= 	param_find("MC_PR_RATE_P90");
+	_params_handles.pitchroll_rate_d10	= 	param_find("MC_PR_RATE_D10");
+	_params_handles.pitchroll_rate_d20	= 	param_find("MC_PR_RATE_D20");
 	_params_handles.pitchroll_rate_d30	= 	param_find("MC_PR_RATE_D30");
 	_params_handles.pitchroll_rate_d40	= 	param_find("MC_PR_RATE_D40");
 	_params_handles.pitchroll_rate_d50	= 	param_find("MC_PR_RATE_D50");
@@ -437,6 +473,8 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_params_handles.pitchroll_rate_d80	= 	param_find("MC_PR_RATE_D80");
 	_params_handles.pitchroll_rate_d90	= 	param_find("MC_PR_RATE_D90");
 	_params_handles.pitch_scale_factor  =   param_find("MC_PITCH_SCALE");
+	_params_handles.pulse_channel  =   param_find("MC_PULSE_SW");
+	_params_handles.pulse_channel_threshold =   param_find("MC_PULSE_TH");
 
 	/* fetch initial parameter values */
 	parameters_update();
@@ -509,8 +547,12 @@ MulticopterAttitudeControl::parameters_update()
 	_params.rate_ff(1) = v;
 
 	/* pitch/roll P gains, throttle dependent */
+	param_get(_params_handles.pitchroll_rate_p10, &v);
+	for (int i=0; i<2; i++)	_params.pitchroll_rate_p(i) = v;
+	param_get(_params_handles.pitchroll_rate_p20, &v);
+	_params.pitchroll_rate_p(2) = v;
 	param_get(_params_handles.pitchroll_rate_p30, &v);
-	for (int i=0; i<4; i++)	_params.pitchroll_rate_p(i) = v;
+	_params.pitchroll_rate_p(3) = v;
 	param_get(_params_handles.pitchroll_rate_p40, &v);
 	_params.pitchroll_rate_p(4) = v;
 	param_get(_params_handles.pitchroll_rate_p50, &v);
@@ -526,8 +568,12 @@ MulticopterAttitudeControl::parameters_update()
 	_params.pitchroll_rate_p(10) = v;
 
 	/* pitch/roll D gains, throttle dependent */
+	param_get(_params_handles.pitchroll_rate_d10, &v);
+	for (int i=0; i<2; i++)	_params.pitchroll_rate_d(i) = v;
+	param_get(_params_handles.pitchroll_rate_d20, &v);
+	_params.pitchroll_rate_d(2) = v;
 	param_get(_params_handles.pitchroll_rate_d30, &v);
-	for (int i=0; i<4; i++)	_params.pitchroll_rate_d(i) = v;
+	_params.pitchroll_rate_d(3) = v;
 	param_get(_params_handles.pitchroll_rate_d40, &v);
 	_params.pitchroll_rate_d(4) = v;
 	param_get(_params_handles.pitchroll_rate_d50, &v);
@@ -541,6 +587,13 @@ MulticopterAttitudeControl::parameters_update()
 	param_get(_params_handles.pitchroll_rate_d90, &v);
 	_params.pitchroll_rate_d(9) = v;
 	_params.pitchroll_rate_d(10) = v;
+
+	/* Pulse switch data */
+	int i;
+	param_get(_params_handles.pulse_channel, &i);
+	_params.pulse_channel = i;
+	param_get(_params_handles.pulse_channel_threshold, &v);
+	_params.pulse_channel_threshold = v;
 
 	/*Pitch array scale factor*/
 	param_get(_params_handles.pitch_scale_factor, &v);
@@ -700,6 +753,16 @@ MulticopterAttitudeControl::vehicle_motor_limits_poll()
 }
 
 void
+MulticopterAttitudeControl::vehicle_rc_channels_poll(){
+	bool updated;
+	orb_check(_rc_channels_sub, &updated);
+
+	if (updated) {
+		orb_copy(ORB_ID(rc_channels), _rc_channels_sub, &_rc_channels);
+	}
+}
+
+void
 MulticopterAttitudeControl::warnx_debug(const char* fmt, ...) {
 	va_list args;
 	va_start(args, fmt);
@@ -843,6 +906,7 @@ MulticopterAttitudeControl::control_attitude_rates(float dt)
 	}
 }
 
+
 void
 MulticopterAttitudeControl::task_main_trampoline(int argc, char *argv[])
 {
@@ -865,6 +929,7 @@ MulticopterAttitudeControl::task_main()
 	_armed_sub = orb_subscribe(ORB_ID(actuator_armed));
 	_vehicle_status_sub = orb_subscribe(ORB_ID(vehicle_status));
 	_motor_limits_sub = orb_subscribe(ORB_ID(multirotor_motor_limits));
+	_rc_channels_sub =  orb_subscribe(ORB_ID(rc_channels));
 
 	/* initialize parameters cache */
 	parameters_update();
@@ -919,6 +984,7 @@ MulticopterAttitudeControl::task_main()
 			vehicle_manual_poll();
 			vehicle_status_poll();
 			vehicle_motor_limits_poll();
+			vehicle_rc_channels_poll();
 
 			adjust_params();
 
@@ -974,7 +1040,35 @@ MulticopterAttitudeControl::task_main()
 				/* attitude controller disabled, poll rates setpoint topic */
 				if (_v_control_mode.flag_control_manual_enabled) {
 					/* manual rates control - ACRO mode */
-					_rates_sp = math::Vector<3>(_manual_control_sp.y, -_manual_control_sp.x,
+
+					//Pulse if above threshold -Patrick
+					float y_rate = _manual_control_sp.y;
+					if(_params.pulse_channel != 0 ){
+						hrt_abstime cur_time = hrt_absolute_time();
+						if(_rc_channels.channels[_params.pulse_channel -1] >=_params.pulse_channel_threshold){
+							if(!_pulse._in_high_range){
+								_pulse._in_high_range = true;
+								_pulse.start_time = hrt_absolute_time();
+								warnx_debug("Pulse starting");
+							}
+							hrt_abstime elapsed_time = cur_time -_pulse.start_time;
+							if(elapsed_time > PULSE_LENGTH * 2){
+								//warnx_debug("Pulse ended");
+							}else if(elapsed_time > PULSE_LENGTH){
+								y_rate = 1;
+								//warnx_debug("Y rate 1");
+							} else {
+								y_rate = -1;
+								//warnx_debug("Y rate -1");
+							}
+						}else{
+							if(_pulse._in_high_range){
+								_pulse._in_high_range = false;
+							}
+						}
+					}
+
+					_rates_sp = math::Vector<3>(y_rate, -_manual_control_sp.x,
 								    _manual_control_sp.r).emult(_params.acro_rate_max);
 					_thrust_sp = math::min(_manual_control_sp.z, MANUAL_THROTTLE_MAX_MULTICOPTER);
 
@@ -1096,7 +1190,7 @@ MulticopterAttitudeControl::adjust_params(){
 
 	if(++counter>=500){
 		counter = 0;
-		warnx_debug("Thrust: %6.3f",(double) _thrust_sp);
+		/*warnx_debug("Thrust: %6.3f",(double) _thrust_sp);
 		warnx_debug("          roll       pitch ");
 		warnx_debug("Rate P: %9.5f  %9.5f",(double) _params_adjust.rate_p(0),(double)_params_adjust.rate_p(1));
 		warnx_debug("Rate D: %9.5f  %9.5f",(double) _params_adjust.rate_d(0),(double)_params_adjust.rate_d(1));
@@ -1104,9 +1198,9 @@ MulticopterAttitudeControl::adjust_params(){
 			warnx_debug("Rate P[%2d]=%8.3f    Rate D[%2d]=%8.3f",
 						i, (double) _params.pitchroll_rate_p(i),
 						i, (double) _params.pitchroll_rate_d(i));
-		}
+		}*/
+		warnx_debug("Channel 6: %9.5f", (double) _rc_channels.channels[5]);
 		warnx_debug("");
-
 	}
 }
 
