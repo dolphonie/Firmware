@@ -209,6 +209,8 @@ private:
 		param_t roll_tc;
 		param_t pitch_tc;
 
+		param_t pitchroll_rate_p10;
+		param_t pitchroll_rate_p20;
 		param_t pitchroll_rate_p30;
 		param_t pitchroll_rate_p40;
 		param_t pitchroll_rate_p50;
@@ -217,6 +219,8 @@ private:
 		param_t pitchroll_rate_p80;
 		param_t pitchroll_rate_p90;
 
+		param_t pitchroll_rate_d10;
+		param_t pitchroll_rate_d20;
 		param_t pitchroll_rate_d30;
 		param_t pitchroll_rate_d40;
 		param_t pitchroll_rate_d50;
@@ -402,6 +406,8 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_params.rate_i.zero();
 	_params.rate_d.zero();
 	_params.rate_ff.zero();
+	_params.pitchroll_rate_d.zero();
+	_params.pitchroll_rate_p.zero();
 	_params.yaw_ff = 0.0f;
 	_params.roll_rate_max = 0.0f;
 	_params.pitch_rate_max = 0.0f;
@@ -411,6 +417,7 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_params.rattitude_thres = 1.0f;
 	_params.pulse_channel = 0;
 	_params.pulse_channel_threshold = 0;
+	_params.pitch_scale = 0.0f;
 
 	_rates_prev.zero();
 	_rates_sp.zero();
@@ -447,6 +454,8 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_params_handles.vtol_type 		= 	param_find("VT_TYPE");
 	_params_handles.roll_tc			= 	param_find("MC_ROLL_TC");
 	_params_handles.pitch_tc		= 	param_find("MC_PITCH_TC");
+	_params_handles.pitchroll_rate_p10	= 	param_find("MC_PR_RATE_P10");
+	_params_handles.pitchroll_rate_p20	= 	param_find("MC_PR_RATE_P20");
 	_params_handles.pitchroll_rate_p30	= 	param_find("MC_PR_RATE_P30");
 	_params_handles.pitchroll_rate_p40	= 	param_find("MC_PR_RATE_P40");
 	_params_handles.pitchroll_rate_p50	= 	param_find("MC_PR_RATE_P50");
@@ -454,6 +463,8 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_params_handles.pitchroll_rate_p70	= 	param_find("MC_PR_RATE_P70");
 	_params_handles.pitchroll_rate_p80	= 	param_find("MC_PR_RATE_P80");
 	_params_handles.pitchroll_rate_p90	= 	param_find("MC_PR_RATE_P90");
+	_params_handles.pitchroll_rate_d10	= 	param_find("MC_PR_RATE_D10");
+	_params_handles.pitchroll_rate_d20	= 	param_find("MC_PR_RATE_D20");
 	_params_handles.pitchroll_rate_d30	= 	param_find("MC_PR_RATE_D30");
 	_params_handles.pitchroll_rate_d40	= 	param_find("MC_PR_RATE_D40");
 	_params_handles.pitchroll_rate_d50	= 	param_find("MC_PR_RATE_D50");
@@ -536,8 +547,12 @@ MulticopterAttitudeControl::parameters_update()
 	_params.rate_ff(1) = v;
 
 	/* pitch/roll P gains, throttle dependent */
+	param_get(_params_handles.pitchroll_rate_p10, &v);
+	for (int i=0; i<2; i++)	_params.pitchroll_rate_p(i) = v;
+	param_get(_params_handles.pitchroll_rate_p20, &v);
+	_params.pitchroll_rate_p(2) = v;
 	param_get(_params_handles.pitchroll_rate_p30, &v);
-	for (int i=0; i<4; i++)	_params.pitchroll_rate_p(i) = v;
+	_params.pitchroll_rate_p(3) = v;
 	param_get(_params_handles.pitchroll_rate_p40, &v);
 	_params.pitchroll_rate_p(4) = v;
 	param_get(_params_handles.pitchroll_rate_p50, &v);
@@ -553,8 +568,12 @@ MulticopterAttitudeControl::parameters_update()
 	_params.pitchroll_rate_p(10) = v;
 
 	/* pitch/roll D gains, throttle dependent */
+	param_get(_params_handles.pitchroll_rate_d10, &v);
+	for (int i=0; i<2; i++)	_params.pitchroll_rate_d(i) = v;
+	param_get(_params_handles.pitchroll_rate_d20, &v);
+	_params.pitchroll_rate_d(2) = v;
 	param_get(_params_handles.pitchroll_rate_d30, &v);
-	for (int i=0; i<4; i++)	_params.pitchroll_rate_d(i) = v;
+	_params.pitchroll_rate_d(3) = v;
 	param_get(_params_handles.pitchroll_rate_d40, &v);
 	_params.pitchroll_rate_d(4) = v;
 	param_get(_params_handles.pitchroll_rate_d50, &v);
