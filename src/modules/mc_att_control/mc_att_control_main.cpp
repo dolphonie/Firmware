@@ -102,7 +102,7 @@ extern "C" __EXPORT int mc_att_control_main(int argc, char *argv[]);
 #define RATES_I_LIMIT	0.3f
 #define MANUAL_THROTTLE_MAX_MULTICOPTER	0.9f
 #define ATTITUDE_TC_DEFAULT 0.2f
-#define PULSE_LENGTH 1e5
+#define PULSE_LENGTH 15e5
 #define PRINT_DEBUG false
 
 class MulticopterAttitudeControl
@@ -1052,14 +1052,8 @@ MulticopterAttitudeControl::task_main()
 								warnx_debug("Pulse starting");
 							}
 							hrt_abstime elapsed_time = cur_time -_pulse.start_time;
-							if(elapsed_time > PULSE_LENGTH * 2){
-								//warnx_debug("Pulse ended");
-							}else if(elapsed_time > PULSE_LENGTH){
+							if(elapsed_time < PULSE_LENGTH ){
 								y_rate = 1;
-								//warnx_debug("Y rate 1");
-							} else {
-								y_rate = -1;
-								//warnx_debug("Y rate -1");
 							}
 						}else{
 							if(_pulse._in_high_range){
